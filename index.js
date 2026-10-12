@@ -1,0 +1,150 @@
+require("dotenv").config();
+const express = require("express");
+const db = require("./db"); // เรียกใช้ connection pool จาก db.js
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "Tasks API พร้อมใช้งาน" });
+});
+
+// 1. GET: ดึงรายการงานทั้งหมดจาก Database (พร้อมชื่อ User และ Category)
+app.get("/api/v1/tasks", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        t.id, 
+        t.title, 
+        t.dueDate, 
+        t.status, 
+        u.name AS user_name, 
+        c.name AS category_name
+      FROM tasks t
+      JOIN users u ON t.user_id = u.id
+      JOIN categories c ON t.category_id = c.id
+    `);
+    res.status(200).json({ message: "สำเร็จ", data: rows });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูล", error: error.message });
+  }
+});
+
+// 2. GET: ดึงข้อมูลงานรายรายการ
+app.get("/api/v1/tasks/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const [rows] = await db.query(`
+      SELECT 
+        t.id, 
+        t.title, 
+        t.dueDate, 
+        t.status, 
+        u.name AS user_name, 
+        c.name AS category_name
+      FROM tasks t
+      JOIN users u ON t.user_id = u.id
+      JOIN categories c ON t.category_id = c.id
+      WHERE t.id = ?
+    `, [id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลงานที่ต้องการ" });
+    }
+
+    res.status(200).json({ message: "สำเร็จ", data: rows[0] });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูล", error: error.message });
+  }
+});
+// 3. POST: เพิ่มข้อมูลงานใหม่ลง Database
+app.post("/api/v1/tasks", async (req, res) => {
+  try {
+    const { title, dueDate, status, user_id, category_id } = req.body;
+
+    if (!title || !dueDate || !status || !user_id || !category_id) {
+      return res.status(400).json({ message: "กรุณากรอกข้อมูลให้ครบถ้วน" });
+    }
+
+    const [result] = await db.query(
+      "INSERT INTO tasks (title, dueDate, status, user_id, category_id) VALUES (?, ?, ?, ?, ?)",
+      [title, dueDate, status, user_id, category_id],
+    );
+
+    res.status(201).json({
+      message: "เพิ่มข้อมูลสำเร็จ",
+      data: {
+        id: result.insertId,
+        title,
+        dueDate,
+        status,
+        user_id,
+        category_id,
+      },
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({
+        message: "เกิดข้อผิดพลาดในการเพิ่มข้อมูล",
+        error: error.message,
+      });
+  }
+});
+
+// 4. PUT: แก้ไขข้อมูลงานใน Database
+app.put("/api/v1/tasks/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { title, dueDate, status } = req.body;
+
+    if (!title || !dueDate || !status) {
+      return res.status(400).json({ message: "กรุณากรอกข้อมูลให้ครบถ้วน" });
+    }
+
+    const [result] = await db.query(
+      "UPDATE tasks SET title = ?, dueDate = ?, status = ? WHERE id = ?",
+      [title, dueDate, status, id],
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลงานที่ต้องการแก้ไข" });
+    }
+
+    res.status(200).json({ message: "แก้ไขข้อมูลสำเร็จ" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({
+        message: "เกิดข้อผิดพลาดในการแก้ไขข้อมูล",
+        error: error.message,
+      });
+  }
+});
+
+// 5. DELETE: ลบข้อมูลงานใน Database
+app.delete("/api/v1/tasks/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const [result] = await db.query("DELETE FROM tasks WHERE id = ?", [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลงานที่ต้องการลบ" });
+    }
+
+    res.status(200).json({ message: "ลบข้อมูลสำเร็จ" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "เกิดข้อผิดพลาดในการลบข้อมูล", error: error.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server กำลังทำงานที่ http://localhost:${PORT}`);
+});
